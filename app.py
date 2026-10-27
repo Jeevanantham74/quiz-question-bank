@@ -1,10 +1,9 @@
 
 from flask import Flask, request, redirect, url_for, render_template_string
 import sqlite3
-from pathlib import Path
 
 app = Flask(__name__)
-DATABASE = Path(__file__).with_name("questions.db")
+DATABASE = "questions.db"
 
 
 def get_db_connection():
@@ -24,223 +23,103 @@ def init_db():
                 c TEXT NOT NULL,
                 d TEXT NOT NULL,
                 answer TEXT NOT NULL
-                    CHECK (answer IN ('A', 'B', 'C', 'D'))
             )
         """)
 
 
-init_db()
+def get_question_data(form):
+    question = form.get("question", "").strip()
+    a = form.get("a", "").strip()
+    b = form.get("b", "").strip()
+    c = form.get("c", "").strip()
+    d = form.get("d", "").strip()
+    answer = form.get("answer", "").strip().upper()
+
+    if not all([question, a, b, c, d]) or answer not in ["A", "B", "C", "D"]:
+        return None
+
+    return question, a, b, c, d, answer
 
 
-HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QuizBank | V2 Manager</title>
+FORM_FIELDS = """
+<label>Question</label>
+<textarea name="question" required>{{ q.question if q else '' }}</textarea>
+
+<label>Option A</label>
+<input name="a" value="{{ q.a if q else '' }}" required>
+
+<label>Option B</label>
+<input name="b" value="{{ q.b if q else '' }}" required>
+
+<label>Option C</label>
+<input name="c" value="{{ q.c if q else '' }}" required>
+
+<label>Option D</label>
+<input name="d" value="{{ q.d if q else '' }}" required>
+
+<label>Correct Answer</label>
+<select name="answer" required>
+    {% for option in ['A', 'B', 'C', 'D'] %}
+    <option value="{{ option }}"
+        {% if q and q.answer == option %}selected{% endif %}>
+        {{ option }}
+    </option>
+    {% endfor %}
+</select>
+"""
+
+
+PAGE_STYLE = """
 <style>
 * { box-sizing: border-box; }
 body {
-    margin: 0;
-    font-family: "Segoe UI", Arial, sans-serif;
-    background: #f4f5fb;
-    color: #202344;
+    margin: 0; font-family: Arial, sans-serif; color: #20243a;
+    background: linear-gradient(135deg, #eef2ff, #f8faff);
 }
+.container { max-width: 1050px; margin: 35px auto; padding: 20px; }
 header {
-    background: linear-gradient(120deg, #312e81, #6d4aff, #8b5cf6);
-    color: white;
-    padding: 28px 6%;
+    padding: 28px; border-radius: 18px; color: white;
+    background: linear-gradient(120deg, #4338ca, #7c3aed);
+    margin-bottom: 24px;
 }
-.brand { font-size: 25px; font-weight: 800; }
-header p { color: #e8e4ff; }
-.container { max-width: 1100px; margin: 32px auto; padding: 0 20px; }
-.stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 18px;
-    margin-bottom: 25px;
+header h1 { margin: 0 0 8px; }
+header p { margin: 0; opacity: .9; }
+.panel {
+    background: white; border-radius: 16px; padding: 24px;
+    margin-bottom: 24px; box-shadow: 0 6px 22px #252d5010;
 }
-.stat, .panel, .question-card {
-    background: white;
-    border-radius: 16px;
-    padding: 23px;
-    box-shadow: 0 5px 24px #29265b0c;
-}
-.stat small { color: #777b96; }
-.stat h2 { margin-bottom: 0; font-size: 28px; }
-.accent { color: #6d4aff; }
-.panel { margin-bottom: 25px; }
-.panel h2 { margin-top: 0; }
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-}
-.full { grid-column: 1 / -1; }
-label { display: block; font-weight: 600; margin-bottom: 7px; }
+label { display: block; font-weight: bold; margin: 14px 0 6px; }
 input, textarea, select {
-    width: 100%;
-    padding: 12px;
-    border: 1px solid #dfe1ee;
-    border-radius: 9px;
-    font: inherit;
-    background: white;
+    width: 100%; padding: 11px; border: 1px solid #d5d9e8;
+    border-radius: 8px; font: inherit; background: white;
 }
-textarea { min-height: 90px; resize: vertical; }
-input:focus, textarea:focus, select:focus {
-    outline: 2px solid #c4b5fd;
-    border-color: #8b5cf6;
-}
+textarea { min-height: 75px; resize: vertical; }
 button, .button {
-    display: inline-block;
-    border: 0;
-    border-radius: 9px;
-    padding: 11px 16px;
-    font-weight: 700;
-    cursor: pointer;
-    text-decoration: none;
-    font-size: 14px;
+    display: inline-block; border: 0; border-radius: 8px;
+    padding: 10px 15px; background: #5145cd; color: white;
+    cursor: pointer; text-decoration: none; font-size: 14px;
 }
-.primary {
-    color: white;
-    background: linear-gradient(100deg, #5145cd, #8b5cf6);
+button:hover, .button:hover { opacity: .88; }
+.search-row { display: flex; gap: 10px; margin-top: 12px; }
+.search-row input { flex: 1; min-width: 0; }
+.question-card {
+    border: 1px solid #e7e9f2; border-radius: 12px;
+    padding: 18px; margin-top: 15px;
 }
-.secondary { background: #eee9ff; color: #5941bd; }
-.danger { background: #fff0f0; color: #b42332; }
-.question-card { margin-top: 14px; }
-.question-title { font-size: 17px; font-weight: 700; }
-.options {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 15px;
-}
-.option {
-    background: #f7f6ff;
-    border: 1px solid #ece9ff;
-    border-radius: 9px;
-    padding: 12px;
-    overflow-wrap: anywhere;
-}
-.correct { color: #087443; font-weight: 700; }
-.tag {
-    display: inline-block;
-    background: #eee9ff;
-    color: #5941bd;
-    border-radius: 20px;
-    padding: 5px 10px;
-    font-size: 12px;
-    font-weight: 700;
-}
-.actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 15px; }
-.empty { text-align: center; color: #8588a0; padding: 25px; }
-.notice {
-    padding: 12px 15px;
-    border-radius: 9px;
-    background: #ecfdf3;
-    color: #087443;
-    margin-bottom: 18px;
-}
-footer { text-align: center; padding: 25px; color: #8588a0; }
-@media (max-width: 600px) {
-    .form-grid, .options { grid-template-columns: 1fr; }
-    .full { grid-column: auto; }
-    header { padding: 24px 20px; }
+.question-card h3 { margin-top: 0; line-height: 1.5; }
+.options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.option { padding: 10px; background: #f5f6fc; border-radius: 7px; }
+.correct { color: #167347; font-weight: bold; margin: 12px 0; }
+.actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.delete { background: #dc3545; }
+.notice { padding: 12px; border-radius: 8px; background: #e7f7ed; color: #17653b; }
+.muted { color: #686d82; }
+@media(max-width: 600px) {
+    .container { margin: 10px auto; padding: 12px; }
+    .options { grid-template-columns: 1fr; }
+    .search-row { flex-direction: column; }
 }
 </style>
-</head>
-<body>
-<header>
-    <div class="brand">✦ QuizBank</div>
-    <h1>Question Bank Dashboard</h1>
-    <p>Version 2 — Add, edit and delete questions.</p>
-</header>
-
-<main class="container">
-    {% if message %}
-    <div class="notice">{{ message }}</div>
-    {% endif %}
-
-    <section class="stats">
-        <div class="stat">
-            <small>Total Questions</small>
-            <h2 class="accent">{{ questions|length }}</h2>
-        </div>
-        <div class="stat">
-            <small>Application Version</small>
-            <h2>V2</h2>
-        </div>
-        <div class="stat">
-            <small>Features</small>
-            <h2 style="font-size:20px">Add · Edit · Delete</h2>
-        </div>
-    </section>
-
-    <section class="panel">
-        <h2>＋ Add a New Question</h2>
-        <p style="color:#777b96">Enter the question and four answer choices.</p>
-        <form method="POST" action="{{ url_for('add_question') }}">
-            <div class="form-grid">
-                <div class="full">
-                    <label for="question">Question</label>
-                    <textarea id="question" name="question"
-                        placeholder="Type your question..." required></textarea>
-                </div>
-                <div><label for="a">Option A</label><input id="a" name="a" required></div>
-                <div><label for="b">Option B</label><input id="b" name="b" required></div>
-                <div><label for="c">Option C</label><input id="c" name="c" required></div>
-                <div><label for="d">Option D</label><input id="d" name="d" required></div>
-                <div class="full">
-                    <label for="answer">Correct Answer</label>
-                    <select id="answer" name="answer" required>
-                        <option value="">Select correct option</option>
-                        <option value="A">Option A</option>
-                        <option value="B">Option B</option>
-                        <option value="C">Option C</option>
-                        <option value="D">Option D</option>
-                    </select>
-                </div>
-                <div class="full">
-                    <button class="primary" type="submit">＋ Add Question</button>
-                </div>
-            </div>
-        </form>
-    </section>
-
-    <section>
-        <h2>Saved Questions</h2>
-        <p style="color:#777b96">Edit details or remove a question below.</p>
-
-        {% for q in questions %}
-        <article class="question-card">
-            <span class="tag">QUESTION {{ q.id }}</span>
-            <p class="question-title">{{ q.question }}</p>
-            <div class="options">
-                <div class="option">A. {{ q.a }}</div>
-                <div class="option">B. {{ q.b }}</div>
-                <div class="option">C. {{ q.c }}</div>
-                <div class="option">D. {{ q.d }}</div>
-            </div>
-            <p class="correct">✓ Correct answer: {{ q.answer }}</p>
-            <div class="actions">
-                <a class="button secondary"
-                   href="{{ url_for('edit_question', question_id=q.id) }}">✎ Edit</a>
-                <form method="POST"
-                      action="{{ url_for('delete_question', question_id=q.id) }}"
-                      onsubmit="return confirm('Delete this question permanently?');">
-                    <button class="danger" type="submit">Delete</button>
-                </form>
-            </div>
-        </article>
-        {% else %}
-        <div class="question-card empty">No questions yet. Add your first question above.</div>
-        {% endfor %}
-    </section>
-</main>
-<footer>QuizBank · Quiz Question Bank System · Version 2</footer>
-</body>
-</html>
 """
 
 
@@ -250,92 +129,126 @@ EDIT_HTML = """
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Edit Question | QuizBank</title>
-<style>
-* { box-sizing: border-box; }
-body { margin: 0; font-family: "Segoe UI", Arial, sans-serif;
-       background: #f4f5fb; color: #202344; }
-header { background: linear-gradient(120deg, #312e81, #6d4aff, #8b5cf6);
-         color: white; padding: 25px 6%; }
-main { max-width: 850px; margin: 30px auto; padding: 0 20px; }
-.panel { background: white; border-radius: 16px; padding: 25px;
-         box-shadow: 0 5px 24px #29265b0c; }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
-.full { grid-column: 1 / -1; }
-label { display: block; font-weight: 600; margin-bottom: 7px; }
-input, textarea, select { width: 100%; padding: 12px; border: 1px solid #dfe1ee;
-    border-radius: 9px; font: inherit; background: white; }
-textarea { min-height: 90px; }
-button, a { display: inline-block; padding: 12px 18px; border: 0;
-    border-radius: 9px; font-weight: 700; text-decoration: none; cursor: pointer; }
-button { color: white; background: linear-gradient(100deg,#5145cd,#8b5cf6); }
-a { background: #eee9ff; color: #5941bd; }
-@media(max-width:600px) { .grid { grid-template-columns: 1fr; } .full { grid-column:auto; } }
-</style>
+<title>Edit Question</title>
+""" + PAGE_STYLE + """
 </head>
 <body>
-<header><h1>✎ Edit Question</h1><p>Update the question and save your changes.</p></header>
-<main>
-<section class="panel">
+<div class="container">
+<header><h1>Edit Question</h1><p>Update your question bank</p></header>
+<div class="panel">
 <form method="POST">
-<div class="grid">
-<div class="full">
-<label for="question">Question</label>
-<textarea id="question" name="question" required>{{ q.question }}</textarea>
-</div>
-<div><label for="a">Option A</label><input id="a" name="a" value="{{ q.a }}" required></div>
-<div><label for="b">Option B</label><input id="b" name="b" value="{{ q.b }}" required></div>
-<div><label for="c">Option C</label><input id="c" name="c" value="{{ q.c }}" required></div>
-<div><label for="d">Option D</label><input id="d" name="d" value="{{ q.d }}" required></div>
-<div class="full">
-<label for="answer">Correct Answer</label>
-<select id="answer" name="answer" required>
-<option value="A" {% if q.answer == 'A' %}selected{% endif %}>Option A</option>
-<option value="B" {% if q.answer == 'B' %}selected{% endif %}>Option B</option>
-<option value="C" {% if q.answer == 'C' %}selected{% endif %}>Option C</option>
-<option value="D" {% if q.answer == 'D' %}selected{% endif %}>Option D</option>
-</select>
-</div>
-<div class="full">
+""" + FORM_FIELDS + """
+<div class="actions">
 <button type="submit">Save Changes</button>
-<a href="{{ url_for('home') }}">Cancel</a>
-</div>
+<a class="button" href="{{ url_for('home') }}">Cancel</a>
 </div>
 </form>
-</section>
-</main>
+</div>
+</div>
 </body>
 </html>
 """
 
 
-def get_question_data(form):
-    question = form.get("question", "").strip()
-    a = form.get("a", "").strip()
-    b = form.get("b", "").strip()
-    c = form.get("c", "").strip()
-    d = form.get("d", "").strip()
-    answer = form.get("answer", "").strip()
+HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Question Bank</title>
+""" + PAGE_STYLE + """
+</head>
+<body>
+<div class="container">
+<header>
+    <h1>Quiz Question Bank</h1>
+    <p>Manage, search, and organize your multiple-choice questions.</p>
+</header>
 
-    if not all([question, a, b, c, d]):
-        return None
+{% if message %}
+<div class="notice">{{ message }}</div>
+{% endif %}
 
-    if answer not in ("A", "B", "C", "D"):
-        return None
+<div class="panel">
+<h2>Add a New Question</h2>
+<form method="POST" action="{{ url_for('add_question') }}">
+""" + FORM_FIELDS + """
+<div class="actions"><button type="submit">Add Question</button></div>
+</form>
+</div>
 
-    return question, a, b, c, d, answer
+<div class="panel">
+<h2>Search Questions</h2>
+<form method="GET" action="{{ url_for('home') }}">
+<div class="search-row">
+    <input type="search" name="q" placeholder="Search question text or options..."
+           value="{{ search_query }}" aria-label="Search questions">
+    <button type="submit">Search</button>
+    {% if search_query %}
+    <a class="button" href="{{ url_for('home') }}">Clear</a>
+    {% endif %}
+</div>
+</form>
+<p class="muted">
+Showing {{ questions|length }} question(s)
+{% if search_query %} matching "{{ search_query }}"{% endif %}.
+</p>
+
+{% for item in questions %}
+<div class="question-card">
+    <h3>{{ loop.index }}. {{ item.question }}</h3>
+    <div class="options">
+        <div class="option"><strong>A.</strong> {{ item.a }}</div>
+        <div class="option"><strong>B.</strong> {{ item.b }}</div>
+        <div class="option"><strong>C.</strong> {{ item.c }}</div>
+        <div class="option"><strong>D.</strong> {{ item.d }}</div>
+    </div>
+    <p class="correct">Correct Answer: {{ item.answer }}</p>
+    <div class="actions">
+        <a class="button" href="{{ url_for('edit_question', question_id=item.id) }}">Edit</a>
+        <form method="POST" action="{{ url_for('delete_question', question_id=item.id) }}"
+              onsubmit="return confirm('Delete this question permanently?');">
+            <button class="delete" type="submit">Delete</button>
+        </form>
+    </div>
+</div>
+{% else %}
+<p class="muted">No questions found. Try another keyword or add a question.</p>
+{% endfor %}
+</div>
+</div>
+</body>
+</html>
+"""
 
 
 @app.route("/")
 def home():
-    with get_db_connection() as conn:
-        questions = conn.execute(
-            "SELECT * FROM questions ORDER BY id DESC"
-        ).fetchall()
+    search_query = request.args.get("q", "").strip()
 
-    message = request.args.get("message", "")
+    with get_db_connection() as conn:
+        if search_query:
+            pattern = f"%{search_query}%"
+            questions = conn.execute("""
+                SELECT * FROM questions
+                WHERE question LIKE ?
+                   OR a LIKE ?
+                   OR b LIKE ?
+                   OR c LIKE ?
+                   OR d LIKE ?
+                ORDER BY id DESC
+            """, (pattern, pattern, pattern, pattern, pattern)).fetchall()
+        else:
+            questions = conn.execute(
+                "SELECT * FROM questions ORDER BY id DESC"
+            ).fetchall()
+
     return render_template_string(
-        HTML, questions=questions, message=message
+        HTML,
+        questions=questions,
+        search_query=search_query,
+        message=request.args.get("message", "")
     )
 
 
@@ -343,7 +256,7 @@ def home():
 def add_question():
     data = get_question_data(request.form)
     if data is None:
-        return "All fields are required and the correct answer must be A, B, C or D.", 400
+        return "Please complete all fields and choose answer A, B, C or D.", 400
 
     with get_db_connection() as conn:
         conn.execute("""
@@ -367,7 +280,7 @@ def edit_question(question_id):
     if request.method == "POST":
         data = get_question_data(request.form)
         if data is None:
-            return "All fields are required and the correct answer must be A, B, C or D.", 400
+            return "Please complete all fields and choose answer A, B, C or D.", 400
 
         with get_db_connection() as conn:
             conn.execute("""
@@ -390,4 +303,5 @@ def delete_question(question_id):
 
 
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True)
