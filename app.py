@@ -512,10 +512,10 @@ HTML = """
             <div class="logo">🎓</div>
             <div>
                 <h1>Quiz Question Bank</h1>
-                <p>Your colourful space to create, organize, and explore questions.</p>
+                <p>Version 3 — View Questions and Search</p>
             </div>
         </div>
-        <span class="tagline">✨ LEARN SMARTER · PRACTICE BETTER</span>
+        <span class="tagline">✨ V3 · VIEW QUESTIONS · SEARCH</span>
     </header>
 
     {% if message %}
